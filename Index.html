@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2563eb">
+<link rel="manifest" href="manifest.json">
+<title>Kasir Lengkap</title>
+<style>
+*{box-sizing:border-box} body{font-family:Arial;background:#f2f2f2;margin:0;padding:10px}
+.container{max-width:600px;margin:auto;background:white;border-radius:12px;padding:15px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+.tabs{display:flex;gap:5px;margin-bottom:15px}
+.tabs button{flex:1;padding:10px;border:none;background:#e5e7eb;border-radius:8px;font-weight:bold}
+.tabs button.active{background:#2563eb;color:white}
+button{padding:12px;border:none;border-radius:8px;background:#2563eb;color:white;width:100%;margin:5px 0;font-size:15px}
+.btn-danger{background:#ef4444} .btn-green{background:#22c55e}
+.menu-item,.cart-item{display:flex;justify-content:space-between;align-items:center;padding:10px;background:#f8f9fa;margin:5px 0;border-radius:6px}
+input,textarea{width:100%;padding:10px;margin:5px 0;border:1px solid #ddd;border-radius:6px}
+#qrisBox{text-align:center;padding:15px;background:#e8f0fe;border-radius:8px}
+.notif{background:#22c55e;color:white;padding:12px;border-radius:8px;display:none;text-align:center}
+table{width:100%;border-collapse:collapse} th,td{border:1px solid #ddd;padding:8px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h2 id="namaToko">🚗 Kasir Mobil</h2>
+
+  <div class="tabs">
+    <button class="active" onclick="showTab('kasir',this)">Kasir</button>
+    <button onclick="showTab('laporan',this)">Laporan</button>
+    <button onclick="showTab('setting',this)">Setting</button>
+  </div>
+
+  <!-- TAB KASIR -->
+  <div id="kasir">
+    <h3>Menu</h3>
+    <div id="listMenu"></div>
+    <h3>Keranjang</h3>
+    <div id="keranjang">Belum ada pesanan</div>
+    <h4>Subtotal: Rp<span id="subtotal">0</span></h4>
+    <input type="number" id="diskon" placeholder="Diskon Rp" oninput="hitungTotal()">
+    <h3>Total Bayar: Rp<span id="total">0</span></h3>
+    <button onclick="kePembayaran()">Bayar dengan QRIS</button>
+
+    <div id="qrisBox" style="display:none;">
+      <h3>Scan QRIS</h3>
+      <img id="imgQris" width="200">
+      <p>Total: Rp<span id="totalBayar">0</span></p>
+      <button class="btn-green" onclick="selesaiBayar()">✅ Sudah Bayar</button>
+      <button onclick="batalBayar()">Batal</button>
+    </div>
+    <div class="notif" id="notif">Pembayaran Lunas!</div>
+  </div>
+
+  <!-- TAB LAPORAN -->
+  <div id="laporan" style="display:none;">
+    <h3>Laporan Transaksi</h3>
+    <h4>Omset: Rp<span id="omset">0</span></h4>
+    <button onclick="exportCSV()">Export ke Excel</button>
+    <button class="btn-danger" onclick="resetData()">Reset Semua Data</button>
+    <table id="tabelRiwayat"><tr><th>Waktu</th><th>Item</th><th>Total</th></tr></table>
+  </div>
+
+  <!-- TAB SETTING -->
+  <div id="setting" style="display:none;">
+    <h3>Pengaturan Manual</h3>
+    <label>Nama Toko</label>
+    <input id="inputNamaToko" placeholder="Nama Toko Kamu">
+    
+    <label>Upload Gambar QRIS</label>
+    <input type="file" id="uploadQris" accept="image/*">
+    <img id="previewQris" width="150" style="margin-top:10px;display:none;">
+
+    <h4>Manajemen Menu</h4>
+    <input id="namaMenu" placeholder="Nama Menu">
+    <input id="hargaMenu" type="number" placeholder="Harga">
+    <button onclick="tambahMenu()">+ Tambah Menu</button>
+    <div id="listEditMenu"></div>
+
+    <h4>Backup & Restore</h4>
+    <button onclick="backupData()">Backup Data</button>
+    <input type="file" id="restoreFile" onchange="restoreData(event)">
+  </div>
+</div>
+
+<script>
+let data = JSON.parse(localStorage.getItem("kasirData")) || {
+  namaToko: "Kasir Mobil",
+  qrisImg: "",
+  menu: [{nama:"Cuci Kecil",harga:30000},{nama:"Cuci Besar",harga:50000}],
+  riwayat: []
+};
+let keranjang = []; let total=0;
+
+function save(){ localStorage.setItem("kasirData", JSON.stringify(data)); }
+
+function showTab(tab,btn){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['kasir','laporan','setting'].forEach(t=>document.getElementById(t).style.display='none');
+  document.getElementById(tab).style.display='block';
+  if(tab=='laporan') renderLaporan();
+  if(tab=='setting') renderSetting();
+}
+
+function renderMenu(){
+  document.getElementById("namaToko").innerText = "🚗 " + data.namaToko;
+  let html='';
+  data.menu.forEach((m,i)=>{
+    html+=`<div class="menu-item">${m.nama} - Rp${m.harga.toLocaleString()}
+    <button style="width:50px" onclick="addCart(${i})">+</button></div>`;
+  });
+  document.getElementById("listMenu").innerHTML=html;
+}
+
+function addCart(i){
+  let item = data.menu[i];
+  keranjang.push(item); hitungTotal(); renderCart();
+}
+
+function renderCart(){
+  if(keranjang.length==0){document.getElementById("keranjang").innerHTML="Belum ada pesanan"; return;}
+  let html='';
+  keranjang.forEach((k,i)=>{ html+=`<div class="cart-item">${k.nama} Rp${k.harga.toLocaleString()}
+  <button style="width:30px" onclick="delCart(${i})">x</button></div>`});
+  document.getElementById("keranjang").innerHTML=html;
+}
+
+function delCart(i){ keranjang.splice(i,1); hitungTotal(); renderCart(); }
+
+function hitungTotal(){
+  let sub = keranjang.reduce((a,b)=>a+b.harga,0);
+  let diskon = parseInt(document.getElementById("diskon").value)||0;
+  total = sub - diskon;
+  document.getElementById("subtotal").innerText=sub.toLocaleString();
+  document.getElementById("total").innerText=total.toLocaleString();
+}
+
+function kePembayaran(){
+  if(total<=0){alert("Keranjang kosong"); return;}
+  document.getElementById("qrisBox").style.display="block";
+  document.getElementById("totalBayar").innerText=total.toLocaleString();
+  document.getElementById("imgQris").src = data.qrisImg || `https://api.qrserver.com/v1/create
